@@ -49,7 +49,6 @@ static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, 
 		}
 		return true;
 	} else if (keyval == GDK_KEY_Return) {
-		printf("dawdawdawdawd\n");
 		GtkListBoxRow *row = gtk_list_box_get_selected_row(GTK_LIST_BOX(app_data->list_box));
 		if (row != NULL) {
 			GAppInfo *info = g_object_get_data(G_OBJECT(row), "app-info");
@@ -58,7 +57,10 @@ static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, 
 				GAppLaunchContext *context = g_app_launch_context_new();
 				if (g_app_info_launch(info, NULL, context, &error)) {
 					gtk_window_close(app_data->window);
+				} else {
+					g_free(error);
 				}
+				g_free(context);
 			}
 		}
 		return true;

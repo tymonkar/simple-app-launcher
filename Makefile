@@ -1,4 +1,4 @@
-TARGET = a.out
+TARGET = launcher
 
 SRC = main.c
 
