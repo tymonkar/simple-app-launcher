@@ -58,9 +58,9 @@ static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, 
 				if (g_app_info_launch(info, NULL, context, &error)) {
 					gtk_window_close(app_data->window);
 				} else {
-					g_free(error);
+					g_error_free(error);
 				}
-				g_free(context);
+				g_object_unref(context);
 			}
 		}
 		return true;
