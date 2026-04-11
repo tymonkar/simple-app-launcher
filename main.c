@@ -4,6 +4,7 @@
 #include "glib-object.h"
 #include "glib.h"
 #include "glibconfig.h"
+#include "gtk/gtkcssprovider.h"
 
 #include <gtk/gtk.h>
 #include <gtk4-layer-shell.h>
@@ -29,6 +30,7 @@ static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, 
                                gpointer window) {
 	AppData *app_data = g_object_get_data(window, "app-data");
 	GtkListBoxRow *selected_row = gtk_list_box_get_selected_row(GTK_LIST_BOX(app_data->list_box));
+	gtk_widget_set_name(GTK_WIDGET(selected_row), "row:selected");
 	if (keyval == GDK_KEY_Escape) {
 		gtk_window_close(GTK_WINDOW(window));
 		return true;
@@ -152,6 +154,27 @@ static gint app_sort_func(GtkListBoxRow *a, GtkListBoxRow *b, gpointer data) {
 	}
 }
 
+static void on_css_error(GtkCssProvider *provider, GtkCssSection *section, GError *error, gpointer user_data) {
+	g_printerr("CSS error: %s\n", error->message);
+}
+
+static void load_css(void) {
+	GtkCssProvider *provider = gtk_css_provider_new();
+
+	char *config_dir = g_build_filename(g_get_user_config_dir(), "sal", NULL);
+	char *css_path = g_build_filename(config_dir, "style.css", NULL);
+
+	g_signal_connect(provider, "parsing-error", G_CALLBACK(on_css_error), NULL);
+	gtk_css_provider_load_from_path(provider, css_path);
+
+	gtk_style_context_add_provider_for_display(gdk_display_get_default(), GTK_STYLE_PROVIDER(provider),
+	                                           GTK_STYLE_PROVIDER_PRIORITY_USER);
+
+	g_free(css_path);
+	g_free(config_dir);
+	g_object_unref(provider);
+}
+
 static void activate(GtkApplication *app, gpointer user_data) {
 
 	GtkWindow *window = GTK_WINDOW(gtk_application_window_new(app));
@@ -160,24 +183,29 @@ static void activate(GtkApplication *app, gpointer user_data) {
 	gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_OVERLAY);
 	gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
 	gtk_window_set_default_size(window, 300, 200);
+	gtk_widget_set_name(GTK_WIDGET(window), "main-window");
 
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	gtk_widget_set_halign(box, GTK_ALIGN_FILL);
 	gtk_widget_set_valign(box, GTK_ALIGN_FILL);
 	gtk_window_set_child(window, box);
+	gtk_widget_set_name(GTK_WIDGET(box), "box");
 
 	GtkWidget *entry = gtk_entry_new();
 	gtk_widget_set_hexpand(entry, true);
 	gtk_box_append(GTK_BOX(box), entry);
+	gtk_widget_set_name(GTK_WIDGET(entry), "input");
 
 	GtkWidget *scrolled = gtk_scrolled_window_new();
 	gtk_widget_set_vexpand(scrolled, true);
 	gtk_box_append(GTK_BOX(box), scrolled);
+	gtk_widget_set_name(GTK_WIDGET(scrolled), "scroll");
 
 	GtkWidget *list_box = gtk_list_box_new();
 	gtk_list_box_set_filter_func(GTK_LIST_BOX(list_box), app_filter_func, NULL, NULL);
 	gtk_list_box_set_sort_func(GTK_LIST_BOX(list_box), app_sort_func, NULL, NULL);
 	gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled), list_box);
+	gtk_widget_set_name(GTK_WIDGET(list_box), "app-list");
 
 	AppData *app_data = g_new(AppData, 1);
 	app_data->window = window;
@@ -196,6 +224,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
 	fill_list(GTK_EDITABLE(entry), window);
 	gtk_window_present(window);
+	load_css();
 }
 
 int main(int argc, char **argv) {
