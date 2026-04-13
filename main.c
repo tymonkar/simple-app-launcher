@@ -8,6 +8,7 @@
 
 #include <gtk/gtk.h>
 #include <gtk4-layer-shell.h>
+#include <stdio.h>
 #include <string.h>
 
 typedef struct _AppData {
@@ -16,6 +17,8 @@ typedef struct _AppData {
 	GtkWidget *list_box;
 	GtkWidget *row;
 	GtkWidget *entry;
+	gint current_index;
+	gint visible_rows;
 } AppData;
 
 static void free_data(gpointer data) {
@@ -30,25 +33,50 @@ static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, 
                                gpointer window) {
 	AppData *app_data = g_object_get_data(window, "app-data");
 	GtkListBoxRow *selected_row = gtk_list_box_get_selected_row(GTK_LIST_BOX(app_data->list_box));
-	gtk_widget_set_name(GTK_WIDGET(selected_row), "row:selected");
 	if (keyval == GDK_KEY_Escape) {
 		gtk_window_close(GTK_WINDOW(window));
 		return true;
 	} else if (keyval == GDK_KEY_Down) {
-		GtkWidget *next_row = gtk_widget_get_next_sibling(GTK_WIDGET(selected_row));
-		if (next_row != NULL) {
-			gtk_list_box_select_row(GTK_LIST_BOX(app_data->list_box), GTK_LIST_BOX_ROW(next_row));
-			gtk_widget_grab_focus(next_row);
-			gtk_widget_grab_focus(app_data->entry);
+		gint next_index = app_data->current_index + 1;
+		if (next_index >= app_data->visible_rows - 1) {
+			next_index = 0;
 		}
+		GtkListBoxRow *next_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(app_data->list_box), next_index);
+		if (next_row == NULL) {
+			next_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(app_data->list_box), 0);
+			app_data->current_index = 0;
+		} else {
+			app_data->current_index = next_index;
+			if (!gtk_widget_get_visible(GTK_WIDGET(next_row))) {
+				next_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(app_data->list_box), 0);
+				app_data->current_index = 0;
+			}
+		}
+		gtk_list_box_select_row(GTK_LIST_BOX(app_data->list_box), GTK_LIST_BOX_ROW(next_row));
+		gtk_widget_grab_focus(GTK_WIDGET(next_row));
+		gtk_widget_grab_focus(app_data->entry);
+		gtk_editable_set_position(GTK_EDITABLE(app_data->entry), -1);
 		return true;
 	} else if (keyval == GDK_KEY_Up) {
-		GtkWidget *prev_row = gtk_widget_get_prev_sibling(GTK_WIDGET(selected_row));
-		if (prev_row != NULL) {
-			gtk_list_box_select_row(GTK_LIST_BOX(app_data->list_box), GTK_LIST_BOX_ROW(prev_row));
-			gtk_widget_grab_focus(prev_row);
-			gtk_widget_grab_focus(app_data->entry);
+		gint prev_index = app_data->current_index - 1;
+		if (prev_index <= 0) {
+			prev_index = app_data->visible_rows - 1;
 		}
+		GtkListBoxRow *next_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(app_data->list_box), prev_index);
+		if (next_row == NULL) {
+			next_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(app_data->list_box), 0);
+			app_data->current_index = 0;
+		} else {
+			app_data->current_index = prev_index;
+			if (!gtk_widget_get_visible(GTK_WIDGET(next_row))) {
+				next_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(app_data->list_box), 0);
+				app_data->current_index = 0;
+			}
+		}
+		gtk_list_box_select_row(GTK_LIST_BOX(app_data->list_box), GTK_LIST_BOX_ROW(next_row));
+		gtk_widget_grab_focus(GTK_WIDGET(next_row));
+		gtk_widget_grab_focus(app_data->entry);
+		gtk_editable_set_position(GTK_EDITABLE(app_data->entry), -1);
 		return true;
 	} else if (keyval == GDK_KEY_Return) {
 		GtkListBoxRow *row = gtk_list_box_get_selected_row(GTK_LIST_BOX(app_data->list_box));
@@ -75,13 +103,10 @@ static gboolean calculate_score(GtkWidget *row, const char *user_input) {
 		g_object_set_data(G_OBJECT(row), "score", GINT_TO_POINTER(100));
 		return true;
 	}
-	GAppInfo *info = g_object_get_data(G_OBJECT(row), "app-info");
-	const char *display_name = g_app_info_get_display_name(info);
-	char *n_display_name = g_utf8_strdown(display_name, -1);
-	char *n_user_input = g_utf8_strdown(user_input, -1);
+	char *n_display_name = g_object_get_data(G_OBJECT(row), "name-lower");
 	gint score = 0;
 
-	const char *match = strstr(n_display_name, n_user_input);
+	const char *match = strstr(n_display_name, user_input);
 	if (match != NULL) {
 		score = 100;
 		gint match_index = g_utf8_pointer_to_offset(n_display_name, match);
@@ -93,26 +118,29 @@ static gboolean calculate_score(GtkWidget *row, const char *user_input) {
 		score -= match_index;
 		score -= strlen(n_display_name);
 	}
-	g_free(n_display_name);
-	g_free(n_user_input);
 	g_object_set_data(G_OBJECT(row), "score", GINT_TO_POINTER(score));
 	return (score > 0);
 }
 
 static void on_entry_change(GtkEditable *entry, gpointer window) {
 	AppData *app_data = g_object_get_data(window, "app-data");
+	app_data->visible_rows = 0;
 	const char *input = gtk_editable_get_text(entry);
+	input = g_utf8_strdown(input, -1);
 	GtkWidget *row;
 	row = gtk_widget_get_first_child(app_data->list_box);
 	while (row != NULL) {
-		calculate_score(row, input);
+		if (calculate_score(row, input)) {
+			app_data->visible_rows++;
+		}
 		row = gtk_widget_get_next_sibling(row);
 	}
+	app_data->current_index = 0;
 	gtk_list_box_unselect_all(GTK_LIST_BOX(app_data->list_box));
 	gtk_list_box_invalidate_sort(GTK_LIST_BOX(app_data->list_box));
 	gtk_list_box_invalidate_filter(GTK_LIST_BOX(app_data->list_box));
-	GtkWidget *first_row = gtk_widget_get_first_child(app_data->list_box);
-	gtk_list_box_select_row(GTK_LIST_BOX(app_data->list_box), GTK_LIST_BOX_ROW(first_row));
+	GtkListBoxRow *first_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(app_data->list_box), 0);
+	gtk_list_box_select_row(GTK_LIST_BOX(app_data->list_box), first_row);
 }
 
 static void fill_list(GtkEditable *editable, gpointer window) {
@@ -121,17 +149,27 @@ static void fill_list(GtkEditable *editable, gpointer window) {
 		GAppInfo *info = l->data;
 		const char *display_name = g_app_info_get_display_name(info);
 		if (g_app_info_should_show(info)) {
+
 			GtkWidget *label = gtk_label_new(display_name);
 			gtk_widget_set_halign(label, GTK_ALIGN_START);
+
 			GtkWidget *row = gtk_list_box_row_new();
 			gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), label);
 			g_object_set_data(G_OBJECT(row), "app-info", info);
 			g_object_set_data(G_OBJECT(row), "score", GINT_TO_POINTER(100));
+
+			if (display_name != NULL) {
+				char *display_name_lower = g_utf8_strdown(display_name, -1);
+				g_object_set_data_full(G_OBJECT(row), "name-lower", display_name_lower, g_free);
+			}
+
 			gtk_list_box_append(GTK_LIST_BOX(app_data->list_box), row);
+			app_data->visible_rows++;
 		}
 	}
-	GtkWidget *first_row = gtk_widget_get_first_child(app_data->list_box);
-	gtk_list_box_select_row(GTK_LIST_BOX(app_data->list_box), GTK_LIST_BOX_ROW(first_row));
+	app_data->current_index = 0;
+	GtkListBoxRow *first_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(app_data->list_box), 0);
+	gtk_list_box_select_row(GTK_LIST_BOX(app_data->list_box), first_row);
 }
 
 static gboolean app_filter_func(GtkListBoxRow *row, gpointer data) {
