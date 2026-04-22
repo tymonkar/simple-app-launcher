@@ -38,7 +38,7 @@ static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, 
 		return true;
 	} else if (keyval == GDK_KEY_Down) {
 		gint next_index = app_data->current_index + 1;
-		if (next_index >= app_data->visible_rows - 1) {
+		if (next_index >= app_data->visible_rows) {
 			next_index = 0;
 		}
 		GtkListBoxRow *next_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(app_data->list_box), next_index);
@@ -59,8 +59,9 @@ static gboolean on_key_pressed(GtkEventControllerKey *controller, guint keyval, 
 		return true;
 	} else if (keyval == GDK_KEY_Up) {
 		gint prev_index = app_data->current_index - 1;
-		if (prev_index <= 0) {
+		if (prev_index < 0) {
 			prev_index = app_data->visible_rows - 1;
+			if (prev_index < 0) prev_index = 0;
 		}
 		GtkListBoxRow *next_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(app_data->list_box), prev_index);
 		if (next_row == NULL) {
